@@ -1,4 +1,4 @@
 [core]
     remote = myremote
 ['remote "myremote"']
-    url = file:///D:/AppData/Local/Temp
+    url = s3://ytcommentdvbucket
