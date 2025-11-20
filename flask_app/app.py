@@ -1,5 +1,3 @@
-# app.py
-
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend before importing pyplot
 
@@ -12,14 +10,17 @@ import mlflow
 import numpy as np
 import joblib
 import re
+import nltk
 import pandas as pd
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from mlflow.tracking import MlflowClient
 import matplotlib.dates as mdates
+import traceback
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
 
 # ---------- Preprocessing Function ----------
 def preprocess_comment(comment):
@@ -42,7 +43,7 @@ def preprocess_comment(comment):
 
 # ---------- Load Model (MLflow → Local Fallback) ----------
 def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
-    mlflow.set_tracking_uri("http://ec2-54-196-109-131.compute-1.amazonaws.com:5000/")
+    mlflow.set_tracking_uri("http://ec2-16-170-146-37.eu-north-1.compute.amazonaws.com:5000/")
 
     vectorizer = joblib.load(vectorizer_path)
     model = None
@@ -61,7 +62,7 @@ def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
 
 
 # ---------- Initialize Model & Vectorizer ----------
-model, vectorizer = load_model_and_vectorizer("my_model", "1", "./tfidf_vectorizer.pkl")
+model, vectorizer = load_model_and_vectorizer("yt_chrome_plugin_model", "1", "./tfidf_vectorizer.pkl")
 
 
 @app.route('/')
@@ -79,14 +80,29 @@ def predict():
         return jsonify({"error": "No comments provided"}), 400
 
     try:
+        # Step 1: Clean comments
         preprocessed = [preprocess_comment(c) for c in comments]
-        transformed = vectorizer.transform(preprocessed)
-        preds = model.predict(transformed).tolist()
-        preds = [str(p) for p in preds]
+
+        # Step 2: Vectorize
+        transformed = vectorizer.transform(preprocessed).toarray()
+
+        # Step 3: Convert to DataFrame with feature names (MLflow needs this)
+        df_transformed = pd.DataFrame(transformed, columns=vectorizer.get_feature_names_out())
+
+        # Step 4: Predict correctly from MLflow model
+        raw_preds = model.predict(df_transformed)
+
+        # 🔥 MLflow sometimes returns DataFrame: extract first column
+        if isinstance(raw_preds, pd.DataFrame):
+            raw_preds = raw_preds.iloc[:, 0].values
+
+        preds = [int(p) for p in raw_preds]
+
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
 
-    response = [{"comment": c, "sentiment": s} for c, s in zip(comments, preds)]
+    response = [{"comment": c, "sentiment": p} for c, p in zip(comments, preds)]
     return jsonify(response)
 
 
@@ -100,17 +116,36 @@ def predict_with_timestamps():
         return jsonify({"error": "No comments provided"}), 400
 
     try:
+        # Extract text and timestamps from objects
         comments = [item['text'] for item in comments_data]
-        timestamps = [item['timestamp'] for item in comments_data]
-        preprocessed = [preprocess_comment(c) for c in comments]
-        transformed = vectorizer.transform(preprocessed)
-        preds = model.predict(transformed).tolist()
-        preds = [str(p) for p in preds]
-    except Exception as e:
-        return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
+        timestamps = [item.get('timestamp', '') for item in comments_data]
 
-    response = [{"comment": c, "sentiment": s, "timestamp": t} for c, s, t in zip(comments, preds, timestamps)]
-    return jsonify(response)
+        # ✅ Use SAME preprocessing as /predict
+        preprocessed_comments = [preprocess_comment(c) for c in comments]
+
+        # ✅ SAME vectorization + schema handling as /predict
+        transformed = vectorizer.transform(preprocessed_comments).toarray()
+        df_transformed = pd.DataFrame(transformed, columns=vectorizer.get_feature_names_out())
+
+        raw_preds = model.predict(df_transformed)
+
+        # MLflow might return DataFrame
+        if isinstance(raw_preds, pd.DataFrame):
+            raw_preds = raw_preds.iloc[:, 0].values
+
+        # Convert to string so JS can parseInt safely
+        predictions = [str(int(p)) for p in raw_preds]
+
+        response = [
+            {"text": comments[i], "timestamp": timestamps[i], "sentiment": predictions[i]}
+            for i in range(len(comments))
+        ]
+
+        return jsonify(response)
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
 
 
 # ---------- Generate Pie Chart ----------
@@ -129,10 +164,9 @@ def generate_chart():
             int(sentiment_counts.get('0', 0)),
             int(sentiment_counts.get('-1', 0))
         ]
-        colors = ['#36A2EB', '#C9CBCF', '#FF6384']
 
         plt.figure(figsize=(6, 6))
-        plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=140)
+        plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
         plt.axis('equal')
 
         img_io = io.BytesIO()
@@ -142,6 +176,7 @@ def generate_chart():
 
         return send_file(img_io, mimetype='image/png')
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": f"Chart generation failed: {str(e)}"}), 500
 
 
@@ -170,6 +205,7 @@ def generate_wordcloud():
 
         return send_file(img_io, mimetype='image/png')
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": f"Word cloud generation failed: {str(e)}"}), 500
 
 
@@ -199,13 +235,13 @@ def generate_trend_graph():
         percentages = percentages[[-1, 0, 1]]
 
         plt.figure(figsize=(12, 6))
-        colors = {-1: 'red', 0: 'gray', 1: 'green'}
-        for val in [-1, 0, 1]:
-            plt.plot(percentages.index, percentages[val], marker='o', linestyle='-', label={-1:'Negative',0:'Neutral',1:'Positive'}[val], color=colors[val])
+        for val, label in zip([-1, 0, 1], ['Negative', 'Neutral', 'Positive']):
+            plt.plot(percentages.index, percentages[val], marker='o', linestyle='-', label=label)
 
         plt.title('Monthly Sentiment Trend Over Time')
         plt.xlabel('Month')
         plt.ylabel('Sentiment %')
+        plt.legend()
         plt.grid(True)
         plt.xticks(rotation=45)
         plt.tight_layout()
@@ -217,6 +253,7 @@ def generate_trend_graph():
 
         return send_file(img_io, mimetype='image/png')
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": f"Trend graph generation failed: {str(e)}"}), 500
 
 
