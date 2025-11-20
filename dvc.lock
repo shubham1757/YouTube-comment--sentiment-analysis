@@ -16,6 +16,7 @@ stages:
       md5: e13bcce40396cd334c8a7a334868166a.dir
       size: 6919701
       nfiles: 2
+
   data_preprocessing:
     cmd: python src/data/data_preprocessing.py
     deps:
@@ -37,6 +38,7 @@ stages:
       md5: ba42408e7bd1e85685474d6a349ae57e.dir
       size: 5134850
       nfiles: 2
+
   model_building:
     cmd: python src/model/model_building.py
     deps:
@@ -64,13 +66,9 @@ stages:
       size: 4117754
     - path: tfidf_vectorizer.pkl
       hash: md5
-<<<<<<< HEAD
       md5: 5c80b3974475f2173a0567703be354d3
       size: 384148
-=======
-      md5: a17f254765779e09c7e2de6f4f045f3d
-      size: 384101
->>>>>>> af8ede8 (dockerfile)
+
   model_evaluation:
     cmd: python src/model/model_evaluation.py
     deps:
@@ -92,7 +90,6 @@ stages:
       size: 7323
     - path: tfidf_vectorizer.pkl
       hash: md5
-<<<<<<< HEAD
       md5: 5c80b3974475f2173a0567703be354d3
       size: 384148
     outs:
@@ -100,27 +97,14 @@ stages:
       hash: md5
       md5: 0855e57e1a18c4736ca1bb9cc3ea6052
       size: 84
-=======
-      md5: a17f254765779e09c7e2de6f4f045f3d
-      size: 384101
-    outs:
-    - path: experiment_info.json
-      hash: md5
-      md5: 8dae7c559d50b459fca2b3f32f68c2f2
-      size: 87
->>>>>>> af8ede8 (dockerfile)
+
   model_registration:
     cmd: python src/model/register_model.py
     deps:
     - path: experiment_info.json
       hash: md5
-<<<<<<< HEAD
       md5: 0855e57e1a18c4736ca1bb9cc3ea6052
       size: 84
-=======
-      md5: 8dae7c559d50b459fca2b3f32f68c2f2
-      size: 87
->>>>>>> af8ede8 (dockerfile)
     - path: src/model/register_model.py
       hash: md5
       md5: fe2747c1c0975f7e59e654b60de0460a
