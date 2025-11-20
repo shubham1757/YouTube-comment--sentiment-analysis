@@ -1,5 +1,9 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import pytest
-from app import app  # Change this if your app.py is in a folder (e.g. from src.app import app)
+from flask_app.app import app  # Corrected import path
 
 @pytest.fixture
 def client():
