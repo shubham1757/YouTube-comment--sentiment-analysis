@@ -1,3 +1,4 @@
+#requirements.txt
 boto3==1.35.36
 Flask==3.0.3
 Flask_Cors==5.0.0
